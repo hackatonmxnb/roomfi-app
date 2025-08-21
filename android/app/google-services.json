@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "YOUR_PROJECT_NUMBER",
+    "project_id": "YOUR_PROJECT_ID",
+    "storage_bucket": "YOUR_PROJECT_ID.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:0.1:android:com.roomfi.app",
+        "android_client_info": {
+          "package_name": "com.roomfi.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "353427672142-fn4eeckdpbvvgvlq2vv50smsb8q725q5.apps.googleusercontent.com",
+          "client_type": 3
+        },
+        {
+          "client_id": "353427672142-fn4eeckdpbvvgvlq2vv50smsb8q725q5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.roomfi.app",
+            "certificate_hash": "EC:73:94:71:85:96:8B:A3:98:C4:E8:2A:48:4C:1D:CE:55:FC:07:99"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "YOUR_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "353427672142-fn4eeckdpbvvgvlq2vv50smsb8q725q5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

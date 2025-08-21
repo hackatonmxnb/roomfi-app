@@ -39,7 +39,7 @@ import Portal from '@portal-hq/web';
 import { renderAmenityIcon, getDaysAgo } from './utils/icons';
 import { useUser, UserProvider } from './UserContext';
 import DashboardPage from './DashboardPage';
-
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 declare global {
   interface Window {
@@ -164,6 +164,7 @@ function App() {
   const { updateUser, user } = useUser();
   const navigate = useNavigate();
 
+  useInitGoogle();
   // Initialize portal instance
   const portal = new Portal({
     apiKey: process.env.REACT_APP_PORTAL_API_KEY,
@@ -684,7 +685,7 @@ function App() {
     }
   };
 
-  const login = useGoogleLogin({
+/*  const login = useGoogleLogin({
     onSuccess: async tokenResponse => {
       if (tokenResponse.access_token) {
         try {
@@ -722,6 +723,44 @@ function App() {
     flow: 'implicit',
     scope: 'openid email profile',
   });
+*/
+
+  const login = async () => {
+    const user = await GoogleAuth.signIn();
+    if (user.authentication.idToken) {
+      try {
+        console.log('user:' + user);
+
+        setIsCreatingWallet(true);
+        
+        const ethAddress = await createPortalWallet();
+        setAccount(ethAddress);
+        updateUser({ wallet: ethAddress });
+
+        console.log('ethAddress:' + ethAddress);
+
+        setIsCreatingWallet(false);
+        handleOnboardingClose();
+
+        //const fullName = user.name || (user.given_name ? (user.given_name + (user.family_name ? ' ' + user.family_name : '')) : '');
+        navigate('/register', {
+          state: {
+            email: user.email,
+            name: user.name,
+            picture: user.imageUrl,
+            walletAddress: ethAddress
+          }
+        });
+      } catch (error) {
+        console.log('error:' + error);
+        setIsCreatingWallet(false);
+        setNotification({ open: true, message: 'Error al procesar el login de Google', severity: 'error' });
+      }
+    }
+
+    // user.authentication.idToken -> para verificar en tu backend
+    return user; // { id, email, name, imageUrl, authentication:{ idToken, accessToken, ... } }
+  };
 
   useEffect(() => {
     if (location.state?.matches && location.state.matches.length > 0) {
@@ -1486,6 +1525,16 @@ function App() {
       </Modal>
     </>
   );
+}
+
+export function useInitGoogle() {
+  useEffect(() => {
+    GoogleAuth.initialize({
+      clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+      scopes: ['profile', 'email'],
+      grantOfflineAccess: false, // pon true si deseas serverAuthCode
+    });
+  }, []);
 }
 
 // Componente wrapper para proveer el tema

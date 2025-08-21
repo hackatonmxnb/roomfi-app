@@ -148,7 +148,10 @@ export default function Header({ account, tokenBalance, onFundingModalOpen, onCo
                 style={{ width: 20, height: 20 }}
               />
             }
-            onClick={() => { onConnectGoogle(); setShowOnboarding(false); }}
+            onClick={() => { 
+              onConnectGoogle(); 
+              setShowOnboarding(false); 
+            }}
             disabled={isCreatingWallet}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >

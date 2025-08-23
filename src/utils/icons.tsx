@@ -23,8 +23,8 @@ export function renderGenderIcon(gender: string) {
       return <TransgenderIcon sx={{ color: '#7c4dff', fontSize: 20, mr: 1 }} />;
     case 'prefer_not_say':
       return <Diversity3Icon sx={{ color: '#757575', fontSize: 20, mr: 1 }} />;
-    default:
-      return null;
+    default: 
+      return <Diversity3Icon sx={{ color: '#757575', fontSize: 20, mr: 1 }} />;
   }
 }
 

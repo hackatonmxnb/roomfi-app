@@ -49,7 +49,7 @@ export default function CreatePoolPage({ account, tokenDecimals }: CreatePoolPag
                 throw new Error("MetaMask no está instalado.");
             }
 
-            const provider = new ethers.BrowserProvider(window.ethereum);
+            const provider = new ethers.BrowserProvider((window as any).ethereum);
             const signer = await provider.getSigner();
 
             const poolContract = new ethers.Contract(

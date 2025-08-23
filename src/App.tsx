@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ethers } from 'ethers';
+import { Eip1193Provider, ethers } from 'ethers';
 import {
   Typography, Button, Container, Box, Paper, Card, CardContent,
   CardMedia, Avatar, Chip, Stack, Grid, useTheme, useMediaQuery, IconButton,
@@ -19,7 +19,6 @@ import MeetingRoomIcon from '@mui/icons-material/MeetingRoom';
 import GroupIcon from '@mui/icons-material/Group';
 import BedIcon from '@mui/icons-material/Bed';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
-import { useGoogleLogin } from '@react-oauth/google';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import CreatePoolPage from './CreatePoolPage';
 import RegisterPage from './RegisterPage';
@@ -34,6 +33,7 @@ import {
   MXNB_ABI,
   INTEREST_GENERATOR_ADDRESS,
   INTEREST_GENERATOR_ABI,
+  MONAD_ADDRESS,
 } from './web3/config';
 import Portal from '@portal-hq/web';
 import { renderAmenityIcon, getDaysAgo } from './utils/icons';
@@ -41,11 +41,18 @@ import { useUser, UserProvider } from './UserContext';
 import DashboardPage from './DashboardPage';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
-declare global {
-  interface Window {
-    ethereum?: any;
-  }
-}
+//-----------------   Reown   -------------------------------------------------------
+import './web3/reown';
+import { BrowserProvider, Contract, formatUnits, JsonRpcProvider, type AbstractProvider } from 'ethers';
+import { useAppKit, useAppKitAccount, useAppKitProvider, useDisconnect } from '@reown/appkit/react';
+import { Interface, isAddress } from 'ethers';
+//----------------- on close disconnect all  -------------------------------------------------------
+import { App as CapacitorApp } from '@capacitor/app';
+import type { AppState } from '@capacitor/app';
+import { useRef } from 'react';
+import type { PluginListenerHandle } from '@capacitor/core';
+//-----------------------------------------------------------------------------------
+import VoiceSearch from './VoiceSearch';
 
 interface TenantPassportData {
   reputation: number;
@@ -163,6 +170,15 @@ const customTheme = createTheme({
 function App() {
   const { updateUser, user } = useUser();
   const navigate = useNavigate();
+  const { open: openAppKit } = useAppKit();
+  const { disconnect } = useDisconnect();
+  const { walletProvider:rawWalletProvider } = useAppKitProvider('eip155');
+  const READ_RPC = NETWORK_CONFIG.rpcUrl || '';
+  const { address, isConnected } = useAppKitAccount();
+  const ABI_BALANCE = ['function balanceOf(address owner) view returns (uint256)'] as const;
+  const ABI_DECIMALS = ['function decimals() view returns (uint8)'] as const;
+  // Flag para no “desconectar” cuando el app se oculta al abrir la wallet
+  const isConnectingWalletRef = useRef(false);
 
   useInitGoogle();
   // Initialize portal instance
@@ -268,7 +284,7 @@ function App() {
   const checkAllowance = useCallback(async () => {
     if (!account || !provider || !vaultAmount) return;
     try {
-      const tokenContract = new ethers.Contract(MXNBT_ADDRESS, MXNB_ABI, provider);
+      const tokenContract = new ethers.Contract(MONAD_ADDRESS, MXNB_ABI, provider);
       const currentAllowance = await tokenContract.allowance(account, INTEREST_GENERATOR_ADDRESS);
       setAllowance(Number(ethers.formatUnits(currentAllowance, tokenDecimals)));
     } catch (error) {
@@ -480,38 +496,19 @@ function App() {
     return true;
   };
 
-  const connectWithMetaMask = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      setNotification({ open: true, message: 'MetaMask no está instalado.', severity: 'warning' });
-      return;
-    }
-
+  const connectWithMetaMask = useCallback(async () => {
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const userAccount = accounts[0];
-      
-      const browserProvider = new ethers.BrowserProvider(window.ethereum);
-      
-      if (await checkNetwork(browserProvider)) {
-        setProvider(browserProvider);
-        setAccount(userAccount);
-        setNotification({ open: true, message: 'Wallet conectada exitosamente.', severity: 'success' });
-      } else {
-        setAccount(null);
-        setProvider(null);
-      }
-      
-      handleOnboardingClose();
-
-    } catch (error) {
-      console.error("Error connecting with MetaMask:", error);
-      setNotification({ open: true, message: 'Error al conectar con MetaMask.', severity: 'error' });
+      await openAppKit({ view: 'Connect', namespace: 'eip155' });
+    } catch (e) {
+      console.error('Error abriendo AppKit:', e);
+      setNotification({ open: true, message: 'No se pudo abrir el conector.', severity: 'error' });
+      isConnectingWalletRef.current = false;
     }
-  };
+  }, [openAppKit, setNotification]);
 
-  const fetchTokenBalance = useCallback(async (prov: ethers.Provider, acc: string) => {
+  /*const fetchTokenBalance = useCallback(async (prov: ethers.Provider, acc: string) => {
     try {
-        const contract = new ethers.Contract(MXNBT_ADDRESS, MXNB_ABI, prov);
+        const contract = new ethers.Contract(MONAD_ADDRESS, MXNB_ABI, prov);
         
         const [rawBalance, decimals] = await Promise.all([
             contract.balanceOf(acc),
@@ -520,7 +517,7 @@ function App() {
 
         console.log("--- [DIAGNÓSTICO DE BALANCE] ---");
         console.log("Billetera (Account):", acc);
-        console.log("Contrato del Token (Address):", MXNBT_ADDRESS);
+        console.log("Contrato del Token (Address):", MONAD_ADDRESS);
         console.log("Decimales del Contrato:", decimals.toString());
         console.log("Balance Crudo (Raw):", rawBalance.toString());
         console.log("---------------------------------");
@@ -532,7 +529,54 @@ function App() {
         console.error("Error fetching token balance:", error);
         setNotification({ open: true, message: 'Error al obtener el balance del token.', severity: 'error' });
     }
-  }, []);
+  }, []);*/
+  async function diagnoseTokenAddress(addr: string, acc: string, rpcUrl: string) {
+    const prov = new JsonRpcProvider(rpcUrl);
+    const net = await prov.getNetwork();
+    console.log('[DIAG] chainId:', net.chainId);
+    console.log('[DIAG] isAddress?', isAddress(addr));
+  
+    const code = await prov.getCode(addr);
+    console.log('[DIAG] getCode:', code === '0x' ? 'NO CONTRACT CODE' : `code_len=${code.length}`);
+  
+    // Llamada cruda a balanceOf para ver qué devuelve el nodo
+    const iface = new Interface(['function balanceOf(address) view returns (uint256)']);
+    const data = iface.encodeFunctionData('balanceOf', [acc]);
+    const raw = await prov.call({ to: addr, data }).catch(e => (console.log('[DIAG] call error', e), 'ERR'));
+    console.log('[DIAG] raw result:', raw);
+  }
+  const fetchTokenBalance = useCallback(
+    async (prov: AbstractProvider | BrowserProvider | null | undefined, acc: string) => {
+      try {
+        if (!acc) return;
+        //await diagnoseTokenAddress(MONAD_ADDRESS, address!, NETWORK_CONFIG.rpcUrl!);
+        // 🛡️ Usa un provider de solo lectura si está configurado (más estable y rápido para lecturas)
+        const readProv: AbstractProvider = READ_RPC ? new JsonRpcProvider(READ_RPC) : (prov as AbstractProvider);
+        if (!readProv) throw new Error('No hay provider disponible para lecturas');
+  
+        const nativeWei = await readProv.getBalance(acc);
+        const mon = Number(formatUnits(nativeWei, 18));
+  
+        console.log('--- [DIAGNÓSTICO DE BALANCE] ---');
+        console.log('Billetera (Account):', acc);
+        console.log('Contrato del Token (Address):', MONAD_ADDRESS);
+        console.log('Decimales del Contrato:', 18);
+        console.log('Balance Crudo (Raw):', mon?.toString?.() ?? String(mon));
+        console.log('---------------------------------');
+  
+        setTokenDecimals(18);
+        setTokenBalance(mon);
+      } catch (error) {
+        console.error('Error fetching token balance:', error);
+        setNotification({
+          open: true,
+          message: 'Error al obtener el balance del token.',
+          severity: 'error',
+        });
+      }
+    },
+    []
+  );  
 
   const handleViewMyProperties = async () => {
     if (!account || !provider) {
@@ -685,46 +729,6 @@ function App() {
     }
   };
 
-/*  const login = useGoogleLogin({
-    onSuccess: async tokenResponse => {
-      if (tokenResponse.access_token) {
-        try {
-          const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-          });
-          const profile = await res.json();
-          setIsCreatingWallet(true);
-          
-          const ethAddress = await createPortalWallet();
-          setAccount(ethAddress);
-          updateUser({ wallet: ethAddress });
-
-          setIsCreatingWallet(false);
-          handleOnboardingClose();
-
-          const fullName = profile.name || (profile.given_name ? (profile.given_name + (profile.family_name ? ' ' + profile.family_name : '')) : '');
-          navigate('/register', {
-            state: {
-              email: profile.email,
-              name: fullName,
-              picture: profile.picture,
-              walletAddress: ethAddress
-            }
-          });
-        } catch (error) {
-          setIsCreatingWallet(false);
-          setNotification({ open: true, message: 'Error al procesar el login de Google', severity: 'error' });
-        }
-      }
-    },
-    onError: () => {
-      setNotification({ open: true, message: 'Error al iniciar sesión con Google', severity: 'error' });
-    },
-    flow: 'implicit',
-    scope: 'openid email profile',
-  });
-*/
-
   const login = async () => {
     const user = await GoogleAuth.signIn();
     if (user.authentication.idToken) {
@@ -762,34 +766,95 @@ function App() {
     return user; // { id, email, name, imageUrl, authentication:{ idToken, accessToken, ... } }
   };
 
+  //  effect que regresa cuando conecta WalletConnect
   useEffect(() => {
-    if (location.state?.matches && location.state.matches.length > 0) {
-      setMatches(location.state.matches);
-    } else {
-      const user_id = '7c74d216-7c65-47e6-b02d-1e6954f39ba7';
-      fetch(process.env.REACT_APP_API + "/matchmaking/match/top?user_id=" + user_id, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data.property_matches)) {
-            const baseLat = 19.4326;
-            const baseLng = -99.1333;
-            const randomNearby = (base: number, delta: number) => base + (Math.random() - 0.5) * delta;
-            const matchesWithCoords = data.property_matches.map((match: any) => ({
-              ...match,
-              lat: randomNearby(baseLat, 0.025),
-              lng: randomNearby(baseLng, 0.025),
-            }));
-            setMatches(matchesWithCoords);
-          } else {
-            setMatches([]);
-          }
-        })
-        .catch(() => setMatches(null));
-    }
-  }, [location.state]);
+    (async () => {
+      if (!isConnected || !rawWalletProvider) return;
+  
+      // 🛡️ Toma el EIP-1193 real (algunos lo exponen en .provider)
+      const eip1193: Eip1193Provider | undefined =
+        (rawWalletProvider as any)?.request
+          ? (rawWalletProvider as any)
+          : (rawWalletProvider as any)?.provider;
+  
+      if (!eip1193 || typeof (eip1193 as any).request !== 'function') {
+        console.error('EIP-1193 inválido:', rawWalletProvider);
+        setNotification({
+          open: true,
+          message: 'No se pudo obtener el provider EIP-1193 de la wallet.',
+          severity: 'error'
+        });
+        return;
+      }
+  
+      try {
+        const browserProvider = new BrowserProvider(eip1193);
+        if (await checkNetwork(browserProvider)) {
+          setProvider(browserProvider);
+          setAccount(address ?? null);
+          setNotification({ open: true, message: 'Wallet conectada exitosamente.', severity: 'success' });
+        } else {
+          setAccount(null);
+          setProvider(null);
+        }
+        handleOnboardingClose?.();
+      } catch (err) {
+        console.error('Error creando BrowserProvider:', err);
+        setNotification({ open: true, message: 'Error al inicializar el provider.', severity: 'error' });
+      } finally {
+        isConnectingWalletRef.current = false;
+        handleOnboardingClose?.();
+      }
+    })();
+  }, [isConnected, rawWalletProvider, address]);
+
+  //----------  desconexión de wallet al salir  ----------------------------
+  const disconnectAll = useCallback(async () => {
+    try { await disconnect(); } catch {}
+    try { await GoogleAuth.signOut(); } catch {}
+    setAccount(null);
+    setProvider(null);
+    setNotification({ open: true, message: 'Cerraste sesión.', severity: 'info' });
+  }, [disconnect]);
+
+  useEffect(() => {
+    let appStateHandle: PluginListenerHandle | undefined;
+  
+    // 1) App a background (iOS/Android)
+    (async () => {
+      appStateHandle = await CapacitorApp.addListener('appStateChange', (state: AppState) => {
+        const { isActive } = state;
+        if (!isActive && !isConnectingWalletRef.current) {
+          setTimeout(() => {
+            if (!isConnectingWalletRef.current) disconnectAll();
+          }, 300);
+        }
+      });
+    })();
+    // 2) WebView oculta (incluye “swipe a home”)
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden' && !isConnectingWalletRef.current) {
+        setTimeout(() => {
+          if (!isConnectingWalletRef.current) disconnectAll();
+        }, 300);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    // 3) Unload (web/refresh)
+    const onBeforeUnload = (_e: BeforeUnloadEvent) => {
+      void disconnectAll();
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+  
+    return () => {
+      // ✅ ahora sí existe .remove()
+      appStateHandle?.remove();
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [disconnectAll]);
+  //-------------------------------------------------------------------
+
 
   useEffect(() => {
     if (provider && account) {
@@ -801,7 +866,7 @@ function App() {
 
   // Listener for account and network changes
   useEffect(() => {
-    if (window.ethereum) {
+    if ((window as any).ethereum) {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0) {
           setAccount(accounts[0]);
@@ -816,12 +881,12 @@ function App() {
         window.location.reload();
       };
 
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
+      (window as any).ethereum.on('accountsChanged', handleAccountsChanged);
+      (window as any).ethereum.on('chainChanged', handleChainChanged);
 
       return () => {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
+        (window as any).ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        (window as any).ethereum.removeListener('chainChanged', handleChainChanged);
       };
     }
   }, []);
@@ -930,103 +995,7 @@ function App() {
                     </Button>
                   </Box>
                 </Grid>
-                <Grid item xs={12} md={7}>
-                  <Paper elevation={3} sx={{
-                    p: { xs: 1, sm: 2 },
-                    bgcolor: '#f5f7fa',
-                    textAlign: 'center',
-                    borderRadius: 4,
-                    minHeight: 0
-                  }}>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} md={6}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                          <TextField
-                            fullWidth
-                            label="¿En dónde buscas departamento?"
-                            variant="outlined"
-                            size="small"
-                            sx={{ bgcolor: 'white', borderRadius: 2, mb: 1 }}
-                          />
-                          <Box sx={{ mt: 0.5, px: 2.5 }}>
-                            <Typography gutterBottom sx={{ fontWeight: 500, color: 'primary.main', mb: 0.5, fontSize: '0.95rem', textAlign: 'left' }}>
-                              ¿Qué precio buscas?
-                            </Typography>
-                            <Slider
-                              value={precio}
-                              onChange={handlePrecioChange}
-                              valueLabelDisplay="auto"
-                              min={1000}
-                              max={80000}
-                              step={500}
-                              marks={[
-                                { value: 1000, label: <span style={{ fontWeight: 500, color: '#1976d2', fontSize: '0.85rem' }}>$1,000</span> },
-                                { value: 80000, label: <span style={{ fontWeight: 500, color: '#1976d2', fontSize: '0.85rem' }}>$80,000</span> }
-                              ]}
-                              sx={{ color: 'primary.main', height: 4, mb: 2, width: '100%' }}
-                            />
-                          </Box>
-                          <FormControl fullWidth sx={{ mt: 1.5, bgcolor: 'white', borderRadius: 2 }} size="small">
-                            <InputLabel id="amenidad-label" sx={{ fontSize: '0.95rem' }}>¿Qué amenidades buscas?</InputLabel>
-                            <Select
-                              fullWidth
-                              labelId="amenidad-label"
-                              id="amenidad-select"
-                              multiple
-                              value={amenidades}
-                              onChange={handleAmenidadChange}
-                              input={<OutlinedInput label="¿Qué amenidades buscas?" />}
-                              renderValue={(selected) => (
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                                  {(selected as string[]).map((value) => (
-                                    <Chip key={value} label={value} size="small" />
-                                  ))}
-                                </Box>
-                              )}
-                            >
-                              <MenuItem value="amueblado"><BedIcon sx={{ color: '#6d4c41', fontSize: 20, mr: 1 }} />Amueblado</MenuItem>
-                              <MenuItem value="baño privado"><MeetingRoomIcon sx={{ color: '#43a047', fontSize: 20, mr: 1 }} />Baño privado</MenuItem>
-                              <MenuItem value="pet friendly"><PetsIcon sx={{ color: '#ff9800', fontSize: 20, mr: 1 }} />Pet friendly</MenuItem>
-                              <MenuItem value="estacionamiento"><LocalParkingIcon sx={{ color: '#1976d2', fontSize: 20, mr: 1 }} />Estacionamiento</MenuItem>
-                              <MenuItem value="piscina"><PoolIcon sx={{ color: '#00bcd4', fontSize: 20, mr: 1 }} />Piscina</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                          <FormControl fullWidth sx={{ bgcolor: 'white', borderRadius: 2 }} size="small">
-                            <InputLabel id="tipo-propiedad-label" sx={{ fontSize: '0.95rem' }}>Tipo de propiedad</InputLabel>
-                            <Select
-                              labelId="tipo-propiedad-label"
-                              id="tipo-propiedad-select"
-                              label="Tipo de propiedad"
-                              defaultValue=""
-                            >
-                              <MenuItem value="departamento"><ApartmentIcon sx={{ color: '#1976d2', fontSize: 20, mr: 1 }} />Departamento completo</MenuItem>
-                              <MenuItem value="privada"><MeetingRoomIcon sx={{ color: '#43a047', fontSize: 20, mr: 1 }} />Habitación privada</MenuItem>
-                              <MenuItem value="compartida"><GroupIcon sx={{ color: '#fbc02d', fontSize: 20, mr: 1 }} />Habitación compartida</MenuItem>
-                            </Select>
-                          </FormControl>
-                          <FormControl fullWidth sx={{ bgcolor: 'white', borderRadius: 2, mt: { xs: 2, md: 4 } }} size="small">
-                            <InputLabel id="genero-label" sx={{ fontSize: '0.95rem' }}>Preferencia de roomie</InputLabel>
-                            <Select
-                              labelId="genero-label"
-                              id="genero-select"
-                              label="Preferencia de roomie"
-                              defaultValue=""
-                            >
-                              <MenuItem value="mujeres"><FemaleIcon sx={{ color: '#e91e63', fontSize: 20, mr: 1 }} />Solo mujeres</MenuItem>
-                              <MenuItem value="hombres"><MaleIcon sx={{ color: '#1976d2', fontSize: 20, mr: 1 }} />Solo hombres</MenuItem>
-                              <MenuItem value="igual"><span style={{ fontSize: 20, marginRight: 8 }}>⚧️</span>Me da igual</MenuItem>
-                              <MenuItem value="lgbtq"><span style={{ fontSize: 20, marginRight: 8 }}>🏳️‍🌈</span>LGBTQ+</MenuItem>
-                            </Select>
-                          </FormControl>
-                        </Box>
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                </Grid>
+                
               </Grid>
 
               <Box sx={{ position: 'relative', width: '100%', minHeight: '100vh', mt: { xs: 4, sm: 6, md: 8 } }}>
@@ -1086,9 +1055,25 @@ function App() {
                 </Box>
                 {isMobileOnly ? (
                   <>
-                    <Fab color="primary" aria-label="Ver lista" onClick={() => setDrawerCardsOpen(true)} sx={{ position: 'absolute', bottom: 24, right: 24, zIndex: 2 }}>
-                      <ListIcon />
-                    </Fab>
+                    <Box
+                      sx={{
+                        position: 'fixed',
+                        right: `calc(env(safe-area-inset-right, 0px) - 8px)`,
+                        bottom: `calc(env(safe-area-inset-bottom, 0px) + ${16 + 40 + 12}px)`,
+                        zIndex: 1600, // por encima del mapa y del Drawer
+                      }}>
+                      <Fab color="primary" aria-label="Ver lista" onClick={() => setDrawerCardsOpen(true)} sx={{ position: 'absolute', bottom: 24, right: 24, zIndex: 2 }}>
+                        <ListIcon />
+                      </Fab>
+                    </Box>
+                    <VoiceSearch
+                      fabBottom={16} fabRight={16}
+                      onSubmit={async (query) => {
+                        console.log("query:" + query);
+                      }}
+                      setMatches={setMatches}
+                    />  
+
                     <Drawer
                       anchor="bottom"
                       open={drawerCardsOpen}

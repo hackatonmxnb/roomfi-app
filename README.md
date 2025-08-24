@@ -5,7 +5,7 @@ Mobile‑first experience built for the Monad L1 hackathon.
 
 ## Demos
 - Android Apk: https://drive.google.com/file/d/1JKe_R14JLr9jyZubS1sa3auN2hWMESAE/view?usp=share_link
-- Video: https://drive.google.com/file/d/1SBO2Q0yp4t3lHAXxz30pKFkD81uh7Iwm/view?usp=share_link
+- Video: https://drive.google.com/file/d/1xkPYM4Xs-LvdYNcl0CAClOzS6kNp1tsO/view?usp=share_link
 
 ---
 

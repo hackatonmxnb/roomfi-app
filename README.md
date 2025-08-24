@@ -21,7 +21,7 @@ Mobile‑first experience built for the Monad L1 hackathon.
 - Sends the final transcript to the NL endpoint and surfaces **chips + suggestions**.
 
 ### 3) Natural‑Language Search
-- **Endpoint:** `POST /nl-search { text } → { results, suggestions }`
+- **Endpoint:** `POST /matchmaking/match { text } → { results, suggestions }`
 
 ### 4) Wallet & Identity
 - **Google Sign‑In (Capacitor)** for SSO.
@@ -119,7 +119,7 @@ cd android
 
 ## Open Demo API (ngrok) – Natural‑Language Matching (OpenAI “open” version)
 
-> **Temporary demo endpoint** (ngrok). Do **not** hard‑code in production—move to env and expect rotation/rate limits.
+> **Temporary demo endpoint** (ngrok).
 
 **Endpoint (POST)**
 ```
@@ -198,9 +198,9 @@ Content-Type: application/json
 ```
 
 **Query params**
-- `user_id` (string, required): identificador del usuario solicitante.
-- `top_k` (int, optional): número de elementos a retornar por categoría.
-- `ai_query` (bool, optional): activa el parseo NL y scoring asistido por IA.
+- `user_id` (string, required): user id searching for rooms/apartments
+- `top_k` (int, optional): elements number to return.
+- `ai_query` (bool, optional): activates NL search, AI assisted.
 
 ---
 

@@ -53,6 +53,7 @@ import { useRef } from 'react';
 import type { PluginListenerHandle } from '@capacitor/core';
 //-----------------------------------------------------------------------------------
 import VoiceSearch from './VoiceSearch';
+import SuggestionBar from './SuggestionBar';
 
 interface TenantPassportData {
   reputation: number;
@@ -207,6 +208,7 @@ function App() {
   const isMobileOnly = useMediaQuery(customTheme.breakpoints.down('sm'));
   const location = useLocation();
   const [matches, setMatches] = useState<any[] | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   // Estados de UI
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
@@ -1072,6 +1074,7 @@ function App() {
                         console.log("query:" + query);
                       }}
                       setMatches={setMatches}
+                      setSuggestions={setSuggestions}  
                     />  
 
                     <Drawer
@@ -1080,6 +1083,12 @@ function App() {
                       onClose={() => setDrawerCardsOpen(false)}
                       PaperProps={{ sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, bgcolor: 'white', border: '1px solid #e0e0e0', maxHeight: '70vh', p: 2 } }}
                     >
+                      <Box sx={{ position: 'sticky', top: 0, zIndex: 5, bgcolor: 'background.paper' }}>
+                        <SuggestionBar
+                          items={suggestions}
+                          bottomPx={0} rightPx={0} leftPx={0} // el componente ignora "bottom" al estar en flujo normal
+                        />
+                      </Box>
                       <Box sx={{ overflowY: 'auto', maxHeight: '100vh' }}>
                         {(matches ?? []).map((listing: any, index: number) => (
                           <Card key={`${listing.id}-${index}`} sx={{ borderRadius: 4, boxShadow: 'none', border: '1px solid #e0e0e0', mb: 2, cursor: 'pointer', '&:hover': { boxShadow: 4, borderColor: 'primary.main' } }}>

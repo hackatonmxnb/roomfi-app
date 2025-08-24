@@ -4,7 +4,8 @@ import { Capacitor } from '@capacitor/core';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition'; // si usas el oficial, cambia el import
 import {
-  Fab, SwipeableDrawer, Box, Typography, Button, Stack, Chip, CircularProgress, Snackbar, LinearProgress
+  Fab, SwipeableDrawer, Box, Typography, Button, Stack, Chip, CircularProgress, Snackbar, LinearProgress,
+  Backdrop
 } from '@mui/material';
 import KeyboardVoiceIcon from '@mui/icons-material/KeyboardVoice';
 
@@ -15,6 +16,7 @@ type Props = {
   fabBottom?: number;
   fabRight?: number;
   setMatches: React.Dispatch<React.SetStateAction<any[] | null>>;
+  setSuggestions?: React.Dispatch<React.SetStateAction<string[]>>;
 };
 
 const SILENCE_MS = 1500; // sin voz -> finalizar
@@ -26,7 +28,8 @@ export default function VoiceSearch({
   hint = 'Ej.: "Cuarto en Condesa por menos de 5 mil con estacionamiento, solo mujeres"',
   fabBottom = 16,
   fabRight = 16,
-  setMatches
+  setMatches,
+  setSuggestions
 }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [listening, setListening]   = useState(false);
@@ -186,6 +189,7 @@ export default function VoiceSearch({
     setPartial('');
     setFinalText('');
     setChips([]);
+    setSuggestions?.([]);
     setListening(true);
 
     // id de sesión (evita que respuestas viejas actualicen el UI)
@@ -204,7 +208,7 @@ export default function VoiceSearch({
       if (sessionRef.current === mySession) setListening(false);
       if (!Capacitor.isNativePlatform()) stopWeb();
     }
-  }, [startNative, startWeb, stopWeb]);
+  }, [setSuggestions, startNative, startWeb, stopWeb]);
 
   const stopSession = useCallback(() => {
     // fuerza cierre inmediato sin depender de 'result'
@@ -226,44 +230,42 @@ export default function VoiceSearch({
   // Buscar (manda al backend si existe onSubmit)
   const runSearch = useCallback(async () => {
     if (!onSubmit) { setDrawerOpen(false); return; }
-    let matchesWithCoords = [] as any;
+    if (searching) return;
     try {
-      setLoading(true);
       setSearching(true);
+      setDrawerOpen(false);
+      if (searching) return;
       const user_id = '7c74d216-7c65-47e6-b02d-1e6954f39ba7';
-      fetch(process.env.REACT_APP_API + "/matchmaking/match/top?ai_query=true&user_id=" + user_id, {
+      const res = await fetch(process.env.REACT_APP_API + "/matchmaking/match/top?ai_query=true&user_id=" + user_id, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 'user_prompt': (finalText || partial || '') })
       })
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data.property_matches)) {
-            const baseLat = 19.4326;
-            const baseLng = -99.1333;
-            const randomNearby = (base: number, delta: number) => base + (Math.random() - 0.5) * delta;
-            const matchesWithCoords = data.property_matches.map((match: any) => ({
-              ...match,
-              lat: randomNearby(baseLat, 0.025),
-              lng: randomNearby(baseLng, 0.025),
-            }));
-            setMatches(matchesWithCoords);
-          } else {
-            setMatches([]);
-          }
-        })
-        .catch(() => setMatches([]));
-      
-
-      if (matchesWithCoords && Array.isArray((matchesWithCoords as any).chips)) setChips((matchesWithCoords as any).chips!);
-      else setDrawerOpen(false);
+      if (!res.ok) throw new Error('Error de red');
+      const data = await res.json();
+      if (Array.isArray(data.property_matches)) {
+        const baseLat = 19.4326;
+        const baseLng = -99.1333;
+        const randomNearby = (base: number, delta: number) => base + (Math.random() - 0.5) * delta;
+        const matchesWithCoords = data.property_matches.map((match: any) => ({
+          ...match,
+          lat: randomNearby(baseLat, 0.025),
+          lng: randomNearby(baseLng, 0.025),
+        }));
+        setMatches(matchesWithCoords);
+        setSuggestions?.(Array.isArray(data.ai_insights.suggestions) ? data.ai_insights.suggestions : []);
+        setChips(Array.isArray(data.ai_insights.suggestions) ? data.ai_insights.suggestions : []);
+      } else {
+        setMatches([]);
+      }
     } catch (e: any) {
+      console.error(e);
       setToast(e?.message || 'Error al procesar la búsqueda');
+      setMatches([]); // opcional
     } finally {
-      setLoading(false);
-      setSearching(false);
+      setSearching(false);       // 🔥 apaga overlay global AL FINAL
     }
-  }, [onSubmit, finalText, partial]);
+  }, [onSubmit, finalText, partial, setMatches, searching, setDrawerOpen]);
 
   // Si el usuario cierra el sheet manualmente, paramos todo y reseteamos bien
   const handleCloseDrawer = useCallback(() => {
@@ -316,7 +318,7 @@ export default function VoiceSearch({
           <Button fullWidth variant="contained" onClick={runSearch} 
             disabled={searching || loading || !(finalText || partial)}
             startIcon={searching ? <CircularProgress size={16} /> : null}>
-            {loading ? 'Buscando…' : 'Buscar'}
+            {searching ? 'Buscando…' : 'Buscar'}
           </Button>
           <Button fullWidth variant="outlined" onClick={handleCloseDrawer}>
             Cerrar
@@ -347,6 +349,22 @@ export default function VoiceSearch({
         )}
       </SwipeableDrawer>
 
+      <Backdrop
+        open={searching}
+        sx={{
+          color: '#fff',
+          zIndex: (theme) => theme.zIndex.modal + 2, // por encima del Drawer/Mapa
+          backdropFilter: 'blur(2px)',
+        }}
+      >
+        <Stack alignItems="center" spacing={1}>
+          <CircularProgress color="inherit" />
+          <Typography variant="body2" sx={{ opacity: 0.9 }}>
+            Buscando propiedades…
+          </Typography>
+        </Stack>
+      </Backdrop>
+      
       <Snackbar open={!!toast} autoHideDuration={2500} message={toast || ''} onClose={() => setToast(null)} />
     </>
   );

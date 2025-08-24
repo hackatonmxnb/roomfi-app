@@ -1,89 +1,239 @@
 # RoomFi
 
-RoomFi is a Web3 platform to find roommates and share a home in a secure, transparent, and trustworthy way. It leverages blockchain technology to manage identities, reputations, and payments in a decentralized manner.
+**Find your roomie. Web3 + Monad.**  
+Mobile‑first experience built for the Monad L1 hackathon.
 
-# Demos
-https://roomfi.netlify.app/
-https://drive.google.com/file/d/1SBO2Q0yp4t3lHAXxz30pKFkD81uh7Iwm/view?usp=share_link
+## Demos
+- Android Apk: https://drive.google.com/file/d/1JKe_R14JLr9jyZubS1sa3auN2hWMESAE/view?usp=share_link
+- Video: https://drive.google.com/file/d/1SBO2Q0yp4t3lHAXxz30pKFkD81uh7Iwm/view?usp=share_link
 
-## Main Features
+---
 
-- **Search for rooms and roommates** with advanced filters.
-- **Tenant identity and reputation** via NFT (Tenant Passport).
-- **Property management** and rental agreements on blockchain.
-- **Payments and pooling** with MXNBT tokens.
-- **Google and MetaMask integration** for onboarding and login.
-- **Interactive map** to visualize properties.
+## What’s new (Hackathon – Aug 2025)
 
-## Tech Stack
+### 1) Mobile‑first app (Capacitor)
+- The existing React web app is wrapped with **Capacitor** to ship a native Android build (APK).
 
-- **React** + **TypeScript** (frontend)
-- **Material UI** (UI/UX)
-- **ethers.js** (Web3)
-- **@portal-hq/web** (MPC wallets)
-- **Google Maps API**
-- **Solidity** (smart contracts in `Foundry/`)
+### 2) Voice Search (es‑MX)
+- BottomSheet for voice input; **speech‑to‑text** with `@capacitor-community/speech-recognition` (native).  
+  Fallback to **Web Speech API** on browsers.
+- Auto‑stop on silence/hard cap with “partial results” streaming.
+- Sends the final transcript to the NL endpoint and surfaces **chips + suggestions**.
 
-## Installation
+### 3) Natural‑Language Search
+- **Endpoint:** `POST /nl-search { text } → { results, suggestions }`
 
-1. Clone the repository:
+### 4) Wallet & Identity
+- **Google Sign‑In (Capacitor)** for SSO.
+- After SSO, **PortalHQ (MPC)** auto‑detects/creates the user wallet and returns EVM address (stored backend).
+- **Reown AppKit (WalletConnect v2 + ethers v6)** for EIP‑1193 provider and app‑level connect/disconnect.
+- Network: **Monad Testnet** (eip155:10143). Read RPC via env.
 
-   ```bash
-   git clone https://github.com/youruser/roomfi.git
-   cd roomfi
-   ```
+## Tech Stack (updated)
+- **React + TypeScript**, **Material UI**
+- **Capacitor** (Android wrapper), **@capacitor-community/speech-recognition** (voice)
+- **ethers v6**, **Reown AppKit** (WalletConnect v2), **PortalHQ** (MPC wallets)
+- **Google Sign‑In (Capacitor)**
+- **Google Maps** (map view)
+- Smart contracts (Foundry)
 
-2. Install dependencies:
+---
 
-   ```bash
-   npm install
-   ```
+> **Notes**
+> - Voicesearch needs microphone permission; Capacitor prompts on first use.
 
-3. Create a `.env` file with the following variables:
+---
 
-   ```env
-   REACT_APP_GOOGLE_MAPS_API_KEY=your_api_key
-   REACT_APP_GOOGLE_CLIENT_ID=your_google_client_id
-   REACT_APP_PORTAL_API_KEY=your_portal_api_key
-   REACT_APP_API=https://api.your-backend.com
-   ```
+## Running (Android – dev)
+```bash
+npm run build               # CRA → /build
+npx cap sync android        # copy web assets
+npx cap open android        # open Android Studio
+# Run on device/emulator (debug)
+```
 
-4. Run the application:
+---
 
-   ```bash
-   npm start
-   ```
+## Android Release Build
 
-The app will be available at [http://localhost:3000](http://localhost:3000).
+**A) Keystore**
+```bash
+keytool -genkey -v -keystore roomfi.keystore -alias roomfi \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
+Create `android/keystore.properties`:
+```properties
+storeFile=../roomfi.keystore
+storePassword=YOUR_PASS
+keyAlias=roomfi
+keyPassword=YOUR_PASS
+```
 
-## Project Structure
+**B) Gradle (android/app/build.gradle)**
+```gradle
+def keystoreProps = new Properties()
+def propsFile = rootProject.file("keystore.properties")
+if (propsFile.exists()) keystoreProps.load(new FileInputStream(propsFile))
 
-- `src/` — React frontend
-- `Foundry/` — Solidity smart contracts and scripts
-- `public/` — Static assets
+android {
+  defaultConfig {
+    applicationId "com.roomfi.app"
+    versionCode 12
+    versionName "1.0.12"
+  }
+  signingConfigs {
+    release {
+      if (keystoreProps['storeFile']) {
+        storeFile file(keystoreProps['storeFile'])
+        storePassword keystoreProps['storePassword']
+        keyAlias keystoreProps['keyAlias']
+        keyPassword keystoreProps['keyPassword']
+      } else {
+        throw new GradleException("Missing keystore.properties or storeFile")
+      }
+    }
+  }
+  buildTypes {
+    release {
+      signingConfig signingConfigs.release
+      minifyEnabled true
+      shrinkResources true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+    }
+  }
+}
+```
 
-## Useful Scripts
+**C) Build artifacts**
+```bash
+cd android
+./gradlew assembleRelease   # APK → app/build/outputs/apk/release/app-release.apk
+./gradlew bundleRelease     # AAB → app/build/outputs/bundle/release/app-release.aab
+```
 
-- `npm start` — Start the frontend in development mode
-- `npm run build` — Build the app for production
-- `npm test` — Run tests
+> Remember to bump `versionCode` for each Play upload.
 
-## Smart Contracts
+---
 
-The contracts are located in `Foundry/src/` and can be deployed using Foundry (`forge`).
+## API Contracts (used in mobile flow)
 
-## Built For — Hackathon Tracks
+## Open Demo API (ngrok) – Natural‑Language Matching (OpenAI “open” version)
 
-| Track          | Integration Highlights                                                                 |
-|----------------|----------------------------------------------------------------------------------------|
-| ✅ Payments    | Uses MXNB for SPEI deposits via Juno multi-clabe feature, withdrawals to any bank via Juno                              |
-| ✅ DeFi        | Users can obtain NFT for on-chain reputation, Yield pools using the MXNB minted, MPC wallets via PortalHQ
+> **Temporary demo endpoint** (ngrok). Do **not** hard‑code in production—move to env and expect rotation/rate limits.
 
-## Contributing
+**Endpoint (POST)**
+```
+https://90f4a12983d3.ngrok-free.app/matchmaking/match/top?user_id=7c74d216-7c65-47e6-b02d-1e6954f39ba7&top_k=3&ai_query=true
+```
 
-Pull requests and suggestions are welcome! Please open an issue to discuss major changes before submitting a PR.
+**Headers**
+```http
+Content-Type: application/json
+```
+
+**Body**
+```json
+{
+  "user_prompt": "Quiero un departamento tranquilo en CDMX con gimnasio; mi presupuesto va de 5000 a 8000."
+}
+```
+
+**Response (example)**
+```json
+{
+  "roommate_matches": [
+    {
+      "id": 1011,
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "first_name": "Satoshi",
+      "last_name": "Nakamoto",
+      "gender": "non-binary",
+      "age": 35,
+      "budget_min": 5000,
+      "budget_max": 10000,
+      "location_preference": "CDMX",
+      "lifestyle_tags": ["early_bird", "non_smoker"],
+      "roomie_preferences": { "gender": "any", "smoking": "no" },
+      "bio": "Inventor of blockchain.",
+      "profile_image_url": "https://example.com/images/satoshi.png",
+      "score": 0.6
+    },
+    { "id": 143, "first_name": "Thomas", "last_name": "Charles", "score": 0.5 },
+    { "id": 588, "first_name": "Sandra", "last_name": "Howard", "score": 0.5 }
+  ],
+  "property_matches": [
+    {
+      "id": 769,
+      "address": "940 Santos Center Apt. 106, Justinmouth, WV 75593",
+      "location": "CDMX",
+      "price": 7493,
+      "amenities": ["parking", "air_conditioning", "laundry", "pet_friendly"],
+      "num_rooms": 2,
+      "bathrooms": 2,
+      "latitude": null,
+      "longitude": null,
+      "score": 0.7
+    },
+    { "id": 192, "price": 7547, "amenities": ["air_conditioning", "wifi", "balcony"], "score": 0.697 },
+    { "id": 342, "price": 7451, "amenities": ["parking", "laundry", "air_conditioning", "pet_friendly"], "score": 0.697 }
+  ],
+  "ai_insights": {
+    "suggestions": [
+      "Especifique cuántos dormitorios necesita.",
+      "Indique los barrios preferidos o la proximidad al trabajo/transporte.",
+      "Indique el plazo de mudanza deseado.",
+      "Mencione si necesita estacionamiento, balcón u otras comodidades específicas."
+    ],
+    "missing_critical_info": [
+      "número deseado de habitaciones",
+      "fecha de mudanza preferida",
+      "barrio o zona específica dentro de la CDMX",
+      "necesidad de estacionamiento o espacio de almacenamiento"
+    ],
+    "profile_status": "existing_preferences",
+    "has_sufficient_for_matching": true,
+    "status": "success"
+  }
+}
+```
+
+**Query params**
+- `user_id` (string, required): identificador del usuario solicitante.
+- `top_k` (int, optional): número de elementos a retornar por categoría.
+- `ai_query` (bool, optional): activa el parseo NL y scoring asistido por IA.
+
+---
+
+## Reown AppKit (WalletConnect v2)
+Initialization (React):
+```ts
+import { createAppKit, useAppKit, AppKit } from '@reown/appkit/react'
+import { EthersAdapter } from '@reown/appkit-ethers/react'
+
+createAppKit({
+  adapters: [new EthersAdapter()],
+  projectId: process.env.REACT_APP_WC_PROJECT_ID!,
+  networks: [{ id: 10143, name: 'Monad Testnet', rpcUrl: process.env.REACT_APP_MONAD_RPC! }],
+})
+```
+- Use `useAppKit()` to open the Connect modal; obtain an EIP‑1193 provider and wrap it with `ethers.BrowserProvider`.
+
+---
+
+## Google Sign‑In (Capacitor)
+- Use `@codetrix-studio/capacitor-google-auth` (or official `@capacitor/google-signin`).
+- Use the **Web OAuth Client ID** in the app config.
+- Add **release SHA‑1** to the OAuth client; fixes `code: 10` on signed builds.
+
+---
+
+## Voice Search UX details
+- Auto‑stop after **1.5s** of silence; **8s** hard cap; **250ms** grace for final result.
+- Drawer closes on “Buscar”; full‑screen overlay until the API responds.
+- Suggestions are bubbled up to `App` and rendered as a compact chip bar.
+
+---
 
 ## License
+Private — not licensed for reuse. Ask for permission before copying or distributing.
 
-This project is private and currently *not licensed for reuse*.
-Do not copy, distribute, or modify the contents without written permission.
